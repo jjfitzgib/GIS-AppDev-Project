@@ -2,46 +2,61 @@
 """
 Created on Fri Feb 19 09:29:35 2021
 
-@author: tum98420
+@author: John Fitzgibbons, Michael Ward
 """
 
 import geopandas as gpd
 import pandas as pd
-from matplotlib import pyplot as plt
-import mapclassify as mc
 
-#set columns as strings
-targetarea = 'ALAND10'
-sourcearea = 'AREA_SQMI'
-sourcestat = 'size'
-targetdivisions = 'NAME10'
-finalshp = 'interpolated.shp'
+# defining the class
+class arealWeight:
+    
+    # parameterized constructor, initializes variables
+    # allows end user to input variable file, column, and output names
+    def __init__(self, source, target, targetarea, sourcearea,
+                 sourcestat, targetdivisions, finalshp):        
+        self.source = source
+        self.target = target
+        self.targetarea = targetarea
+        self.sourcearea = sourcearea
+        self.sourcestat = sourcestat
+        self.targetdivisions = targetdivisions
+        self.finalshp = finalshp
+    
+    # read dataframes function
+    def read_df(self):
+        self.source_df = gpd.read_file(self.source)
+        self.target_df = gpd.read_file(self.target)     
+    
+    # join dataframes function     
+    def join_df(self):  
+        self.join = gpd.sjoin(self.source_df, self.target_df,
+                              how = 'left', op = 'intersects')          
+   
+    # execute areal weighting algorithm on dataframes   
+    def areal_alg(self):    
+        self.join["AREAL_WT"] = self.join[self.targetarea] / self.join[self.sourcearea]
+        self.join["EST"] = self.join["AREAL_WT"] * self.join[self.sourcestat]
+        results1 = self.join[[self.targetdivisions, "EST"]].groupby(self.targetdivisions).sum()
+        final = pd.merge(self.target_df, results1, on=self.targetdivisions)
+        return final.to_file(self.finalshp)
 
-def arealwt(source, target):
-    geosource = gpd.read_file(source)
-    geotarget = gpd.read_file(target)
-    joined1 = gpd.sjoin(geosource, geotarget, how = 'left', op = 'intersects')
-    joined1["AREAL_WT"] = joined1[targetarea] / joined1[sourcearea]
-    joined1["EST"] = joined1["AREAL_WT"] * joined1[sourcestat]
-    results1 = joined1[[targetdivisions, "EST"]].groupby(targetdivisions).sum()
-    final = pd.merge(geotarget, results1, on=targetdivisions)
-    return final.to_file(finalshp) 
+    # method for running program
+    def run_areal(self):
+        self.read_df()
+        self.join_df()
+        self.areal_alg()
+        
+        
+# creating object of the class invoking constructor
+philly = arealWeight('john_data/accident_districts.shp',
+                     'john_data/c16590ca-5adf-4332-aaec-9323b2fa7e7d2020328-1-1jurugw.pr6w.shp',
+                     'ALAND10', 'AREA_SQMI', 'size', 'NAME10', 'interpolated.shp')
 
+#calling methods using the run function on object that was just created
+philly.run_areal()
 
-#test
-arealwt('apptest/accident_districts.shp', "apptest/c16590ca-5adf-4332-aaec-9323b2fa7e7d2020328-1-1jurugw.pr6w.shp")
-
-
-# check choropleth map of test data
-fig, ax = plt.subplots(1, figsize=(8, 8))
-
-gpd.read_file(finalshp).plot(column='EST', 
-           cmap='YlGnBu', 
-           edgecolor='0.5',
-           ax = ax,
-           linewidth=0.5,
-           legend=True,
-           k=4, 
-           scheme='quantiles')
+# need to convert some attributes to private attributes
+# need to add a crs check
 
 
